@@ -1,8 +1,7 @@
 // index.js
-import dotenv from 'dotenv';
-dotenv.config();
+require('dotenv').config(); // loads environment variables from a .env file if available
 
-import express from 'express';
+const express = require('express');
 const app = express();
 
 // Middleware to parse JSON bodies

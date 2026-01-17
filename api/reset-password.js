@@ -1,27 +1,35 @@
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { Resend } from 'resend';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-async function hashPassword(password) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hashBuffer = await crypto.webcrypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+async function sendResetPasswordEmail(userEmail, resetToken) {
+  const resetLink = `${process.env.BASE_URL}/reset-password?token=${resetToken}`;
+  await resend.emails.send({
+    from: 'Sellytics <no-reply@sellyticshq.com>',
+    to: userEmail,
+    subject: 'Reset Your Password',
+    html: `<p>Dear Sellytics Partner,</p>
+           <p>Click <a href="${resetLink}">here</a> to reset your password.</p>`
+  });
 }
 
 export default async function handler(req, res) {
-  // ✅ Dynamic CORS - Production Ready
+  // ✅ Dynamic CORS
   const allowedOrigins = [
+    // production
     'https://stores.sellyticshq.com',
     'https://sellyticshq.com',
-    // Add localhost only for development (remove in production build)
-    ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:400', 'http://localhost:3000'] : [])
+     'http://localhost:400',
+    'http://localhost:401',
+    'http://localhost:300'
   ];
+
   const origin = req.headers.origin;
   if (allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
@@ -30,33 +38,34 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-  // Handle preflight
+  // Handle preflight OPTIONS
   if (req.method === 'OPTIONS') return res.status(204).end();
 
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method not allowed' });
 
-  const { token, newPassword } = req.body;
-  if (!token || !newPassword || newPassword.length < 6)
-    return res.status(400).json({ message: 'Invalid input' });
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ message: 'Email required' });
 
   try {
     const { data: user, error } = await supabase
       .from('stores')
-      .select('id, token_expiry')
-      .eq('reset_token', token)
+      .select('id, email_address')
+      .eq('email_address', email.trim().toLowerCase())
       .single();
 
-    if (error || !user) return res.status(400).json({ message: 'Invalid or expired token' });
-    if (new Date(user.token_expiry) < new Date()) return res.status(400).json({ message: 'Token expired' });
+    if (error || !user) return res.status(404).json({ message: 'Store not found' });
 
-    const hashedPassword = await hashPassword(newPassword);
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const tokenExpiry = new Date(Date.now() + 2 * 60 * 60 * 1000);
 
     await supabase
       .from('stores')
-      .update({ password: hashedPassword, reset_token: null, token_expiry: null })
+      .update({ reset_token: resetToken, token_expiry: tokenExpiry.toISOString() })
       .eq('id', user.id);
 
-    return res.status(200).json({ message: 'Password successfully reset' });
+    await sendResetPasswordEmail(email, resetToken);
+
+    return res.status(200).json({ message: 'Reset link sent to email!' });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Internal server error' });

@@ -19,20 +19,8 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 // ------------------
 // CORS Middleware
 // ------------------
-const allowedOrigins = [
-  'http://localhost:400',
-  'http://localhost:3000',
-  'http://localhost:4000',
-  'http://stores.sellyticshq.com',
-  'https://stores.sellyticshq.com',
-  'https://sellyticshq.com'
-];
-
 app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
+  res.setHeader('Access-Control-Allow-Origin', 'http://localhost:400'); // add your frontend URL
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.sendStatus(204); // handle preflight
@@ -69,7 +57,7 @@ async function sendResetPasswordEmail(userEmail, resetToken) {
 // ------------------
 // Routes
 // ------------------
-app.post('/api/forgot-password', async (req, res) => {
+app.post('/forgot-password', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ message: 'Email required' });
 
@@ -98,7 +86,7 @@ app.post('/api/forgot-password', async (req, res) => {
   }
 });
 
-app.post('/api/reset-password', async (req, res) => {
+app.post('/reset-password', async (req, res) => {
   const { token, newPassword } = req.body;
   if (!token || !newPassword || newPassword.length < 6)
     return res.status(400).json({ message: 'Invalid input' });
